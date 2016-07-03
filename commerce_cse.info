@@ -1,0 +1,8 @@
+name = Shipping Method for Courier Service Express
+description = Provides an shipping method for Courier Service Express.
+package = Commerce (shipping)
+dependencies[] = commerce
+dependencies[] = commerce_shipping
+core = 7.x
+
+; $Id$
