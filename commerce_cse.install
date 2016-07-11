@@ -3,6 +3,6 @@
 /**
  * Implementation of hook_uninstall().
  */
-function commerce_ems_uninstall() {
+function commerce_cse_uninstall() {
   db_query("DELETE FROM {variable} WHERE name LIKE 'commerce_cse_%%'");
 }

@@ -9,55 +9,55 @@
  * Implementation of hook_menu().
  */
 function commerce_cse_menu() {
-	$items = array();
+  $items = array();
 
-	$items['admin/commerce/config/shipping/methods/cse/edit'] = array(
-		'title' => 'Edit',
-		'description' => 'Configure the CSE shipping method.',
-		'page callback' => 'drupal_get_form',
-		'page arguments' => array('commerce_cse_settings_form'),
-		'access arguments' => array('administer shipping'),
-		'file' => 'commerce_cse.admin.inc',
-		'type' => MENU_LOCAL_TASK,
-		'context' => MENU_CONTEXT_INLINE,
-		'weight' => 0,
-	);
+  $items['admin/commerce/config/shipping/methods/cse/edit'] = array(
+    'title' => 'Edit',
+    'description' => 'Configure the CSE shipping method.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_cse_settings_form'),
+    'access arguments' => array('administer shipping'),
+    'file' => 'commerce_cse.admin.inc',
+    'type' => MENU_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 0,
+  );
 
-	return $items;
+  return $items;
 }
 
 /**
  * Implements hook_commerce_shipping_method_info().
  */
 function commerce_cse_commerce_shipping_method_info() {
-	$shipping_methods = array();
+  $shipping_methods = array();
 
-	$shipping_methods['cse'] = array(
-		'title' => t('Courier Service Express shipping method'),
-		'description' => t('Courier Service Express shipping method.'),
-	);
+  $shipping_methods['cse'] = array(
+    'title' => t('Courier Service Express shipping method'),
+    'description' => t('Courier Service Express shipping method.'),
+  );
 
-	return $shipping_methods;
+  return $shipping_methods;
 }
 
 /**
  * Implements hook_commerce_shipping_service_info().
  */
 function commerce_cse_commerce_shipping_service_info() {
-	$shipping_services = array();
+  $shipping_services = array();
 
-	$shipping_services['cse_shipping_service'] = array(
-		'title' => t('Courier Service Express shipping service'),
-		'description' => t('Courier Service Express.'),
-		'display_title' => t('Courier Service Express'),
-		'shipping_method' => 'cse',
-		'price_component' => 'shipping',
-		'callbacks' => array(
-			'rate' => 'commerce_cse_service_rate',
-		),
-	);
+  $shipping_services['cse_shipping_service'] = array(
+    'title' => t('Courier Service Express shipping service'),
+    'description' => t('Courier Service Express.'),
+    'display_title' => t('Courier Service Express'),
+    'shipping_method' => 'cse',
+    'price_component' => 'shipping',
+    'callbacks' => array(
+      'rate' => 'commerce_cse_service_rate',
+    ),
+  );
 
-	return $shipping_services;
+  return $shipping_services;
 }
 
 /**
@@ -66,92 +66,132 @@ function commerce_cse_commerce_shipping_service_info() {
  */
 function commerce_cse_service_rate($shipping_service, $order) {
 
-	$profile_id = $order->commerce_customer_billing['und'][0]['profile_id'];
-	$customer = commerce_customer_profile_load($profile_id);
+  $profile_id = $order->commerce_customer_billing['und'][0]['profile_id'];
+  $customer = commerce_customer_profile_load($profile_id);
 
-	$region_id = $customer->field_region['und'][0]['tid'];
-	$shipping_region = taxonomy_term_load($region_id);
+  $region_id = $customer->field_region_and_city['und'][0]['tid'];
+  $shipping_region = taxonomy_term_load($region_id);
 
-	$shipping_address_code = $shipping_region->field_code;
+  $shipping_address_code = $shipping_region->field_code;
+  $shipping_address_code = $shipping_address_code['und'][0]['value'];
 
-	$total_weight = 0;
-	$default_weight = variable_get('commerce_cse_default_weight', 0);
+  // this returns $total_weight['unit'] and $total_weight['weight']
+  $total_weight = commerce_physical_order_weight($order, 'kg');
 
-	$total_weight = commerce_physical_order_weight($order, 'kg');	// this returns $total_weight['unit'] and $total_weight['weight']
+  $store_region_code = variable_get('commerce_cse_store_region_code', '');
+  $store_address_code = variable_get('commerce_cse_store_city_code', '');
 
-	$store_address_code = variable_get('commerce_cse_store_address_code', '');
+  $user = variable_get('commerce_cse_account_id', '');
 
-	$user = variable_get('commerce_cse_account_id', '');
+  $password = variable_get('commerce_cse_password', '');
 
-	$password = variable_get('commerce_cse_password', '');
+  $urgencie_code = variable_get('commerce_cse_urgencie_code', '');
 
-	$urgencie_code = variable_get('commerce_cse_urgencie_code', '');
+  $type_of_cargo_code = variable_get('commerce_cse_type_of_cargo_code', '');
 
-	$type_of_cargo_code = variable_get('commerce_cse_type_of_cargo_code', '');
+  if (array_shift(taxonomy_get_parents($region_id))->field_code == $store_region_code) {
+    $service_code = variable_get('commerce_cse_service_region_delivery', '');
+  } elseif ($shipping_address_code == $store_address_code) {
+    $service_code = variable_get('commerce_cse_local_delivery_code', '');
+  } else {
+    $service_code = variable_get('commerce_cse_service_country_delivery', '');
+  }
 
-	$reply = drupal_http_request('http://emspost.ru/api/rest?method=ems.calculate&from='. $from .'&to='. $to .'&weight=' . $total_weight['weight'] . '&type=att');
+  $arguments = array (
+    'login' => $user,
+    'password' => $password,
+    'from' => $store_address_code,
+    'to' => $shipping_address_code,
+    'typeOfCargo' => $type_of_cargo_code,
+    'urgency' => $urgencie_code,
+    'service' => $service_code,
+    'weight' => $total_weight['weight'],
+    'qty' => 1,
+  );
 
-	if (taxonomy_get_parents($region_id)->name == 'Ростовская обл' ){
-		$service_code = variable_get('commerce_cse_service_region_delivery', '');
-	}
-	else {
-		$service_code = variable_get('commerce_cse_service_country_delivery', '');
-	}
+  $data = http_build_query($arguments, '', '&');
 
-	$reply = drupal_http_request('https://service.cse-cargo.ru/JSONWebService.asmx/Calculator?login=' . $user . '&password=' . $password . ' &from=' . $shipping_address_code . '&to=' . $store_address_code . '&typeOfCargo=' . $type_of_cargo_code . '&urgency=' . $urgencie_code . '&service=' . $service_code . '&weight=' . $total_weight . '&qty=1');
+  set_time_limit(60);
+  $curl_session = curl_init();
+  curl_setopt($curl_session, CURLOPT_URL, 'https://service.cse-cargo.ru/JSONWebService.asmx/Calculator');
+  curl_setopt($curl_session, CURLOPT_HEADER, 0);
+  curl_setopt($curl_session, CURLOPT_POST, 1);
+  curl_setopt($curl_session, CURLOPT_POSTFIELDS, $data);
+  curl_setopt($curl_session, CURLOPT_RETURNTRANSFER, 1);
+  curl_setopt($curl_session, CURLOPT_TIMEOUT, 30);
+  curl_setopt($curl_session, CURLOPT_SSL_VERIFYPEER, FALSE);
+  curl_setopt($curl_session, CURLOPT_SSL_VERIFYHOST, 1);
 
+  $reply = curl_exec($curl_session);
 
+  $error = curl_error($curl_session).'('.curl_errno($curl_session).')';
 
-	if ($reply->code == 200) {
-		$cse_result = json_decode($reply->data);
-		$cse_result_tariffs = $cse_result->tariffs;
-	} else {
-		$cse_result_tariffs = new StdClass();
-		$fixed = variable_get('commerce_cse_fixed_price', 0);
-		if ($fixed) {
-			$cse_result_tariffs->total = $fixed;
-		} else {
-			// return no quotes for CSE
-			drupal_set_message(t('CSE website is down, so we can\'t calculate the delivery price. Try to call us. Sorry for the inconvenience!'), 'error');
-			return array();
-		}
-	}
+  $http_code = curl_getinfo($curl_session, CURLINFO_HTTP_CODE);
 
-	if ($cse_result->error == 'true') {
-		watchdog('cse', $cse_result->errorInfo, array(), WATCHDOG_ERROR);
-		return array();
-	}
+  curl_close($curl_session);
 
+  if (!$reply) {
+    echo $error;
+  } else {
+    $reply = json_decode($reply);
+    if ($reply->error == 'true') {
+      watchdog('cse', $reply->errorInfo, array(), WATCHDOG_ERROR);
 
-	if ($shipping_region->name == 'Другой') {
-		if ($total_weight['weight'] < 0.5) {
-			$region_extra_charge = 380;
-		}
-		else {
-			$region_extra_charge = ceil($total_weight['weight'])*48 + 372;
-		}
-		$cse_result_tariffs->total += $region_extra_charge;
-	}
+      return array();
+    }
+  }
 
-	$extra_charge = (int) variable_get('commerce_cse_extra_charge', 0);
+  if ($http_code == 200) {
+    $cse_result = $reply;
+    $cse_result_tariffs = array_shift($reply->tariffs);
 
-	// Extra charge not added if request failed, as in that case fixed price
-	// can be used
-	if ($extra_charge && ($reply->code == 200)) {
-		$charge_type = variable_get('commerce_cse_extra_charge_type', 'percent');
-		if ($charge_type == 'percent') {
-			$cse_result_tariffs->total += ($cse_result_tariffs->total * 0.01 * $extra_charge);
-		} else {
-			// fixed amount
-			$cse_result_tariffs->total += $extra_charge;
-		}
-	}
+    if ($cse_result->error == 'true') {
+      watchdog('cse', $cse_result->errorInfo, array(), WATCHDOG_ERROR);
 
-	$cse_result_tariffs->total = ceil($cse_result_tariffs->total / 10) * 10;
+      return array();
+    }
+  } else {
+    $cse_result_tariffs = new StdClass();
+    $fixed = variable_get('commerce_cse_fixed_price', 0);
+    if ($fixed) {
+      $cse_result_tariffs->total = $fixed;
+    } else {
+      // return no quotes for CSE
+      drupal_set_message(t('CSE website is down, so we can\'t calculate the delivery price. Try to call us. Sorry for the inconvenience!'), 'error');
 
-	return array(
-		'amount' => commerce_currency_decimal_to_amount($cse_result_tariffs->total, 'RUB'),
-		'currency_code' => 'RUB',
-		'data' => array(),
-	);
+      return array();
+    }
+  }
+
+  if ($shipping_region->name == t('Another')) {
+
+    if ($total_weight['weight'] < 0.5) {
+      $region_extra_charge = 380;
+    } else {
+      $region_extra_charge = ceil($total_weight['weight'])*48 + 372;
+    }
+    $cse_result_tariffs->total += $region_extra_charge;
+  }
+
+  $extra_charge = (int) variable_get('commerce_cse_extra_charge', 0);
+
+  // Extra charge not added if request failed, as in that case fixed price
+  // can be used
+  if ($extra_charge && ($http_code == 200)) {
+    $charge_type = variable_get('commerce_cse_extra_charge_type', 'percent');
+    if ($charge_type == 'percent') {
+      $cse_result_tariffs->total += ($cse_result_tariffs->total * 0.01 * $extra_charge);
+    } else {
+      // fixed amount
+      $cse_result_tariffs->total += $extra_charge;
+    }
+  }
+
+  $cse_result_tariffs->total = ceil($cse_result_tariffs->total / 10) * 10;
+
+  return array(
+    'amount' => commerce_currency_decimal_to_amount($cse_result_tariffs->total, 'RUB'),
+    'currency_code' => 'RUB',
+    'data' => array(),
+  );
 }
